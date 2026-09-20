@@ -185,9 +185,9 @@
 
 <div id="confirm">
   <div class="box">
-    <h3>Confirm order</h3>
+    <h3>Confirm order (with stop-loss)</h3>
     <div class="line"><span>Instrument</span><b id="cInst">NIFTY 24850 CE</b></div>
-    <div class="line"><span>Entry / SL</span><b id="cPrice" class="mono">142.00 / 105.00</b></div>
+    <div class="line"><span>Entry LIMIT / Stop-loss</span><b id="cPrice" class="mono">142.00 / 105.00</b></div>
     <div class="line"><span>Lots × Lot size</span><b id="cLots" class="mono">1 × 65</b></div>
     <div class="line"><span>Est. risk</span><b id="cRisk" class="mono">₹2,405</b></div>
     <div class="actions">
@@ -487,15 +487,16 @@
     if(!base || !state.expiry){ showToast('Set backend URL and expiry in ⚙ first.'); return; }
     const payload = {
       index: state.index, expiry: state.expiry, strike: state.strike, type: state.optType,
-      transactionType:'BUY', quantity: state._computed.qty, orderType:'MARKET'
+      transactionType:'BUY', quantity: state._computed.qty,
+      price: state.entry, stopLossPrice: state.sl
     };
-    showToast('Sending order to your backend…');
+    showToast('Sending entry + stop-loss to your backend…');
     try{
       const res = await fetch(`${base}/api/order`, {
         method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
       });
       const data = await res.json();
-      showToast(res.ok ? `Order sent — ${data.orderId||''} ${data.orderStatus||''}` : `Broker error: ${data.error||res.status}`);
+      showToast(res.ok ? `Order sent with SL — ${data.orderId||''} ${data.orderStatus||''}` : `Broker error: ${data.error||res.status}`);
     }catch(err){ showToast('Could not reach backend endpoint.'); }
   });
 
