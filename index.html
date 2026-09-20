@@ -97,6 +97,7 @@
   #settings p{color:var(--sub); font-size:12.5px; line-height:1.5; margin:0 0 14px;}
   #settings .field{margin-bottom:10px;}
   #settings .close{width:100%; background:var(--panel2); border:none; color:var(--text); padding:12px; border-radius:12px; font-weight:700; margin-top:6px;}
+  #settings .saved-note{font-size:11px; color:var(--ce); margin:-4px 0 12px; display:none;}
 
   #confirm{position:fixed; inset:0; background:rgba(0,0,0,0.65); display:none; align-items:center; justify-content:center; z-index:50; padding:20px;}
   #confirm .box{background:var(--panel); border-radius:16px; padding:20px; max-width:340px; width:100%; border:1px solid var(--line);}
@@ -199,16 +200,17 @@
 <div id="settings">
   <div class="sheet">
     <h3>Backend & broker</h3>
-    <p>This UI talks only to your own backend (see the server.js I gave you) —
-    never directly to Dhan. The backend needs a whitelisted static IP for
-    order placement; quotes and charts work without it.</p>
+    <p>This UI talks only to your own backend — never directly to Dhan. The backend needs a
+    whitelisted static IP for order placement; quotes and charts work without it.
+    These settings are saved on this phone and will still be here next time you open the app.</p>
+    <div class="saved-note" id="savedNote">✓ Saved</div>
     <div class="field"><label>Backend base URL</label>
-      <input id="endpointUrl" placeholder="https://strike-terminal-backend.onrender.com"></div>
+      <input id="endpointUrl" placeholder="https://strike-backend-xxxx.onrender.com"></div>
     <div class="field"><label>Lot size</label>
       <input id="lotSize" class="mono" type="number" value="65"></div>
     <div class="field"><label>Live poll interval (seconds)</label>
       <input id="pollSec" class="mono" type="number" value="3"></div>
-    <button class="close" id="closeSettings">Done</button>
+    <button class="close" id="closeSettings">Save & close</button>
   </div>
 </div>
 
@@ -216,6 +218,23 @@
 
 <script>
 (function(){
+  const SETTINGS_KEY = 'strikeTerminalSettings';
+
+  function loadSettings(){
+    try{ return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; }catch(e){ return {}; }
+  }
+  function saveSettings(){
+    const data = {
+      endpointUrl: el('endpointUrl').value.trim(),
+      lotSize: el('lotSize').value,
+      pollSec: el('pollSec').value,
+      index: state.index,
+      optType: state.optType,
+      expiry: state.expiry
+    };
+    try{ localStorage.setItem(SETTINGS_KEY, JSON.stringify(data)); }catch(e){}
+  }
+
   const state = {
     index:'NIFTY', optType:'CE', spot:24850, lotSize:65, capital:100000, riskPct:2,
     strike:24850, expiry:'', entry:142, sl:105, priceMax:220, priceMin:20,
@@ -275,7 +294,6 @@
     ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
     ctx.clearRect(0,0,w,h);
 
-    // grid
     ctx.strokeStyle = '#1C2531'; ctx.lineWidth = 1;
     for(let i=1;i<4;i++){ const y=h*i/4; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
 
@@ -348,7 +366,6 @@
 
   function render(){ buildLadder(); renderChartHandles(); renderCalc(); }
 
-  // ---- live polling against your backend ----
   function restartPolling(){
     if(state.pollTimer) clearInterval(state.pollTimer);
     setConnected(false);
@@ -359,8 +376,8 @@
         const url = `${base}/api/live?index=${state.index}&expiry=${state.expiry}&strike=${state.strike}&type=${state.optType}`;
         const r = await fetch(url);
         const data = await r.json();
-        const ltp = data && data.ohlc && data.ohlc.data && data.ohlc.data.NSE_FNO
-          ? Object.values(data.ohlc.data.NSE_FNO)[0].last_price : null;
+        const ltp = data && data.ohlc && data.ohlc.data && data.ohlc.data[Object.keys(data.ohlc.data)[0]]
+          ? Object.values(data.ohlc.data[Object.keys(data.ohlc.data)[0]])[0].last_price : null;
         if(ltp){
           state.history.push(ltp);
           if(state.history.length > 60) state.history.shift();
@@ -368,6 +385,8 @@
           state.priceMin = Math.min(state.priceMin, ltp*0.9);
           drawChart();
           setConnected(true);
+        } else {
+          setConnected(false);
         }
       }catch(err){ setConnected(false); }
     };
@@ -380,7 +399,7 @@
     el('liveText').textContent = on ? 'live' : (backendUrl() && state.expiry ? 'reconnecting…' : 'not connected');
   }
 
-  async function loadExpiries(){
+  async function loadExpiries(preferSaved){
     const base = backendUrl();
     const sel = el('expiry');
     if(!base){ sel.innerHTML = '<option value="">Set backend URL in ⚙</option>'; return; }
@@ -389,6 +408,9 @@
       const data = await r.json();
       const list = data.data || [];
       sel.innerHTML = list.map(d => `<option value="${d}">${d}</option>`).join('') || '<option value="">No expiries found</option>';
+      if(preferSaved && list.includes(preferSaved)){
+        sel.value = preferSaved;
+      }
       state.expiry = sel.value;
       restartPolling();
     }catch(err){
@@ -396,26 +418,25 @@
     }
   }
 
-  // ---- controls ----
   el('btnNifty').addEventListener('click', ()=>{
     state.index='NIFTY'; state.lotSize=65; el('lotSize').value=65;
     el('btnNifty').classList.add('active'); el('btnSensex').classList.remove('active');
     setStrike(Math.round(state.spot/strikeStep())*strikeStep());
-    loadExpiries();
+    saveSettings(); loadExpiries();
   });
   el('btnSensex').addEventListener('click', ()=>{
     state.index='SENSEX'; state.lotSize=20; el('lotSize').value=20;
     el('btnSensex').classList.add('active'); el('btnNifty').classList.remove('active');
     setStrike(Math.round(state.spot/strikeStep())*strikeStep());
-    loadExpiries();
+    saveSettings(); loadExpiries();
   });
   el('btnCE').addEventListener('click', ()=>{
     state.optType='CE'; el('btnCE').classList.add('active'); el('btnPE').classList.remove('active');
-    syncPremiumGuess(); render(); restartPolling();
+    syncPremiumGuess(); render(); restartPolling(); saveSettings();
   });
   el('btnPE').addEventListener('click', ()=>{
     state.optType='PE'; el('btnPE').classList.add('active'); el('btnCE').classList.remove('active');
-    syncPremiumGuess(); render(); restartPolling();
+    syncPremiumGuess(); render(); restartPolling(); saveSettings();
   });
 
   el('strikeInput').addEventListener('change', e=>{
@@ -433,15 +454,21 @@
       render();
     });
   });
-  el('lotSize').addEventListener('input', e=>{ state.lotSize = parseFloat(e.target.value)||0; renderCalc(); });
-  el('expiry').addEventListener('change', e=>{ state.expiry = e.target.value; restartPolling(); });
+  el('lotSize').addEventListener('input', e=>{ state.lotSize = parseFloat(e.target.value)||0; renderCalc(); saveSettings(); });
+  el('expiry').addEventListener('change', e=>{ state.expiry = e.target.value; restartPolling(); saveSettings(); });
+  el('pollSec').addEventListener('change', ()=>{ restartPolling(); saveSettings(); });
 
   makeDraggable(el('entryHandle'), 'entry');
   makeDraggable(el('slHandle'), 'sl');
   window.addEventListener('resize', ()=>{ renderChartHandles(); });
 
   el('gearBtn').addEventListener('click', ()=> el('settings').style.display='flex');
-  el('closeSettings').addEventListener('click', ()=>{ el('settings').style.display='none'; loadExpiries(); });
+  el('closeSettings').addEventListener('click', ()=>{
+    saveSettings();
+    const note = el('savedNote'); note.style.display='block';
+    setTimeout(()=>{ note.style.display='none'; el('settings').style.display='none'; }, 500);
+    loadExpiries(state.expiry);
+  });
 
   el('execBtn').addEventListener('click', ()=>{
     if(el('execBtn').disabled) return;
@@ -477,13 +504,30 @@
     clearTimeout(t._h); t._h = setTimeout(()=>{ t.style.display='none'; }, 3200);
   }
 
-  syncPremiumGuess();
-  render();
-})();
+  // ---- restore saved settings on load ----
+  const saved = loadSettings();
+  if(saved.endpointUrl) el('endpointUrl').value = saved.endpointUrl;
+  if(saved.lotSize) el('lotSize').value = saved.lotSize;
+  if(saved.pollSec) el('pollSec').value = saved.pollSec;
+  if(saved.index === 'SENSEX'){
+    state.index='SENSEX'; state.lotSize= saved.lotSize || 20;
+    el('btnSensex').classList.add('active'); el('btnNifty').classList.remove('active');
+    state.spot = 82000; el('spot').value = 82000;
+  }
+  if(saved.optType === 'PE'){
+    state.optType='PE'; el('btnPE').classList.add('active'); el('btnCE').classList.remove('active');
+  }
 
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
-}
+  syncPremiumGuess();
+  state.strike = Math.round(state.spot/strikeStep())*strikeStep();
+  el('strikeInput').value = state.strike;
+  render();
+  if(el('endpointUrl').value.trim()) loadExpiries(saved.expiry);
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
+  }
+})();
 </script>
 </body>
 </html>
