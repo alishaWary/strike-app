@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Strike Terminal</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0A0E14">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+  :root{
+    --bg:#0A0E14; --panel:#10161F; --panel2:#161D28; --line:#232C39;
+    --text:#E7ECEF; --sub:#7C8A9B; --ce:#2DD4BF; --pe:#FF6B6B; --amber:#F0B429;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none;}
+  html,body{margin:0; padding:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; height:100%;}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
+  #app{max-width:480px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column; padding-bottom:96px;}
+
+  header{padding:14px 16px 10px; display:flex; align-items:center; justify-content:space-between;
+    border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--bg); z-index:20;}
+  header .brand{font-size:15px; font-weight:700;}
+  header .brand span{color:var(--amber);}
+  .idx-toggle{display:flex; background:var(--panel2); border-radius:10px; padding:3px; gap:2px;}
+  .idx-toggle button{border:none; background:transparent; color:var(--sub); font-size:13px; font-weight:600;
+    padding:7px 12px; border-radius:8px;}
+  .idx-toggle button.active{background:var(--bg); color:var(--text);}
+  .gear{background:none; border:none; color:var(--sub); font-size:18px; padding:4px 8px;}
+
+  .row{display:flex; gap:10px; padding:12px 16px 4px;}
+  .field{flex:1; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:8px 12px;}
+  .field label{display:block; font-size:10.5px; color:var(--sub); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:3px;}
+  .field input,.field select{width:100%; background:none; border:none; color:var(--text); font-size:15px; font-weight:600; outline:none;}
+  .field select{-webkit-appearance:none; appearance:none;}
+
+  .section-label{padding:16px 16px 6px; font-size:11px; color:var(--sub); text-transform:uppercase; letter-spacing:0.8px;}
+  .cepe-toggle{display:flex; margin:0 16px 8px; background:var(--panel2); border-radius:10px; padding:3px;}
+  .cepe-toggle button{flex:1; border:none; background:transparent; padding:8px; border-radius:8px; font-weight:700; font-size:13px; color:var(--sub);}
+  .cepe-toggle button.active.ce{background:rgba(45,212,191,0.15); color:var(--ce);}
+  .cepe-toggle button.active.pe{background:rgba(255,107,107,0.15); color:var(--pe);}
+
+  .strike-picker{display:flex; align-items:center; gap:8px; padding:0 16px 8px;}
+  .strike-picker button{width:36px; height:36px; border-radius:10px; border:1px solid var(--line);
+    background:var(--panel); color:var(--text); font-size:16px; font-weight:700;}
+  .strike-picker input{flex:1; text-align:center; background:var(--panel); border:1px solid var(--line);
+    border-radius:10px; padding:9px; color:var(--text); font-size:17px; font-weight:800; outline:none;}
+
+  .ladder{display:flex; overflow-x:auto; gap:8px; padding:2px 16px 4px; scroll-snap-type:x proximity;}
+  .ladder::-webkit-scrollbar{display:none;}
+  .strike-chip{flex:0 0 auto; scroll-snap-align:center; background:var(--panel); border:1px solid var(--line);
+    border-radius:12px; padding:8px 14px; text-align:center; min-width:74px;}
+  .strike-chip .k{font-size:14px; font-weight:700;}
+  .strike-chip .tag{font-size:9.5px; color:var(--sub); margin-top:2px;}
+  .strike-chip.atm{border-color:var(--amber);}
+  .strike-chip.selected{background:var(--panel2); border-color:var(--ce);}
+  .strike-chip.selected.pe-mode{border-color:var(--pe);}
+
+  .chart-card{margin:14px 16px 0; background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:14px;}
+  .chart-head{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px;}
+  .chart-head .sel{font-size:13px; color:var(--sub);}
+  .chart-head .sel b{color:var(--text);}
+  .chart-head .live{font-size:10px; color:var(--sub); display:flex; align-items:center; gap:5px;}
+  .tf-toggle{display:flex; gap:6px; margin-bottom:8px;}
+  .tf-toggle button{border:1px solid var(--line); background:var(--panel2); color:var(--sub); font-size:11px;
+    font-weight:700; padding:5px 10px; border-radius:8px;}
+  .tf-toggle button.active{background:rgba(45,212,191,0.15); border-color:var(--ce); color:var(--ce);}
+  .dot{width:6px; height:6px; border-radius:50%; background:#3E4A5A;}
+  .dot.on{background:var(--ce); box-shadow:0 0 6px var(--ce);}
+
+  .chart-wrap{position:relative; height:220px; background:var(--panel2); border-radius:12px; margin:6px 0; overflow:hidden; touch-action:none;}
+  #chartContainer{position:absolute; inset:0;}
+  .handle{position:absolute; left:0; right:0; height:30px; margin-top:-15px; display:flex; align-items:center;
+    padding:0 10px; touch-action:none; z-index:5; display:none;}
+  .handle.visible{display:flex;}
+  .handle .bar{position:absolute; left:0; right:0; top:50%; height:1px;}
+  .handle.entry .bar{background:var(--ce); box-shadow:0 0 0 rgba(0,0,0,0);}
+  .handle.sl .bar{background:var(--pe);}
+  .handle .knob{position:relative; z-index:2; margin-right:auto; display:flex; align-items:center; gap:6px; background:var(--bg);
+    border-radius:8px; padding:4px 9px; font-size:12px; font-weight:700; box-shadow:0 2px 6px rgba(0,0,0,0.4);}
+  .handle.entry .knob{border:1px solid var(--ce); color:var(--ce);}
+  .handle.sl .knob{border:1px solid var(--pe); color:var(--pe);}
+  .handle .knob::before{content:"⠿"; opacity:0.6; font-size:11px;}
+  .chart-hint{position:absolute; bottom:6px; left:0; right:0; text-align:center; font-size:10px; color:var(--sub);
+    pointer-events:none; opacity:0.8; z-index:4;}
+  .chart-hint.hidden-hint{display:none;}
+
+  .calc-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:12px;}
+  .calc-item{background:var(--panel2); border-radius:10px; padding:9px 11px;}
+  .calc-item .l{font-size:10px; color:var(--sub); text-transform:uppercase; letter-spacing:0.5px;}
+  .calc-item .v{font-size:16px; font-weight:700; margin-top:2px;}
+  .calc-item.wide{grid-column:1 / -1; display:flex; justify-content:space-between; align-items:center;}
+
+  .execute-bar{position:fixed; bottom:0; left:0; right:0; background:linear-gradient(180deg, transparent, var(--bg) 20%);
+    padding:14px 16px 20px; display:flex; justify-content:center; z-index:30;}
+  .execute-bar .inner{max-width:480px; width:100%;}
+  #execBtn{width:100%; border:none; border-radius:16px; padding:16px; font-size:16px; font-weight:800; color:#0A0E14;}
+  #execBtn.ce-mode{background:var(--ce);}
+  #execBtn.pe-mode{background:var(--pe);}
+  #execBtn:active{transform:scale(0.98);}
+
+  #settings{position:fixed; inset:0; background:rgba(0,0,0,0.6); display:none; align-items:flex-end; z-index:40;}
+  #settings .sheet{background:var(--panel); width:100%; max-width:480px; margin:0 auto; border-radius:18px 18px 0 0;
+    padding:18px 16px 28px; max-height:85vh; overflow-y:auto;}
+  #settings h3{margin:0 0 4px; font-size:15px;}
+  #settings p{color:var(--sub); font-size:12.5px; line-height:1.5; margin:0 0 14px;}
+  #settings .field{margin-bottom:10px;}
+  #settings .close{width:100%; background:var(--panel2); border:none; color:var(--text); padding:12px; border-radius:12px; font-weight:700; margin-top:6px;}
+  #settings .saved-note{font-size:11px; color:var(--ce); margin:-4px 0 12px; display:none;}
+
+  #confirm{position:fixed; inset:0; background:rgba(0,0,0,0.65); display:none; align-items:center; justify-content:center; z-index:50; padding:20px;}
+  #confirm .box{background:var(--panel); border-radius:16px; padding:20px; max-width:340px; width:100%; border:1px solid var(--line);}
+  #confirm h3{margin:0 0 10px; font-size:16px;}
+  #confirm .line{display:flex; justify-content:space-between; font-size:13px; padding:5px 0; border-bottom:1px solid var(--line); color:var(--sub);}
+  #confirm .line b{color:var(--text); font-weight:700;}
+  #confirm .actions{display:flex; gap:8px; margin-top:14px;}
+  #confirm .actions button{flex:1; border:none; border-radius:10px; padding:12px; font-weight:700;}
+  #confirm .cancel{background:var(--panel2); color:var(--text);}
+  #confirm .go{background:var(--amber); color:#0A0E14;}
+  .toast{position:fixed; top:14px; left:50%; transform:translateX(-50%); background:var(--panel2); border:1px solid var(--line);
+    padding:10px 16px; border-radius:10px; font-size:12.5px; z-index:60; display:none; max-width:85%; text-align:center;}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <div class="brand">Strike <span>Terminal</span></div>
+    <div class="idx-toggle">
+      <button id="btnNifty" class="active">NIFTY</button>
+      <button id="btnSensex">SENSEX</button>
+    </div>
+    <button class="gear" id="gearBtn">⚙</button>
+  </header>
+
+  <div class="row">
+    <div class="field">
+      <label>Spot price <span id="spotSrc" style="font-weight:400; text-transform:none; color:var(--ce);"></span></label>
+      <input class="mono" id="spot" type="number" inputmode="decimal" value="24850">
+    </div>
+    <div class="field">
+      <label>Expiry</label>
+      <select id="expiry"><option value="">Manual — set in ⚙</option></select>
+    </div>
+  </div>
+  <div class="row">
+    <div class="field">
+      <label>Capital (₹) <span id="capitalSrc" style="font-weight:400; text-transform:none; color:var(--ce);"></span></label>
+      <input class="mono" id="capital" type="number" inputmode="decimal" value="100000">
+    </div>
+    <div class="field">
+      <label>Risk / trade (%)</label>
+      <input class="mono" id="riskPct" type="number" inputmode="decimal" value="2">
+    </div>
+  </div>
+
+  <div class="section-label">Strike</div>
+  <div class="cepe-toggle">
+    <button id="btnCE" class="active ce">CE — Call</button>
+    <button id="btnPE" class="pe">PE — Put</button>
+  </div>
+
+  <div class="strike-picker">
+    <button id="stepDown">–</button>
+    <input class="mono" id="strikeInput" type="number" inputmode="numeric" value="24850">
+    <button id="stepUp">+</button>
+  </div>
+  <div class="ladder" id="ladder"></div>
+
+  <div class="chart-card">
+    <div class="chart-head">
+      <span class="sel">Selected <b id="selLabel">24850 CE</b></span>
+      <span class="live"><span class="dot" id="liveDot"></span><span id="liveText">not connected</span></span>
+    </div>
+    <div class="tf-toggle" id="tfToggle">
+      <button data-tf="1" class="active">1m</button>
+      <button data-tf="5">5m</button>
+      <button data-tf="15">15m</button>
+      <button data-tf="25">25m</button>
+      <button data-tf="60">1h</button>
+      <span id="entryWindowLegend" style="margin-left:auto; display:flex; align-items:center; gap:5px; font-size:10px; color:var(--sub);">
+        <span style="width:9px; height:9px; border-radius:2px; background:#F0B429; display:inline-block;"></span>entry window
+      </span>
+    </div>
+    <div class="chart-wrap" id="chartWrap">
+      <div id="chartContainer"></div>
+      <div class="handle entry" id="entryHandle"><div class="bar"></div><div class="knob mono">Entry ₹<span id="entryVal">142.00</span></div></div>
+      <div class="handle sl" id="slHandle"><div class="bar"></div><div class="knob mono">SL ₹<span id="slVal">105.00</span></div></div>
+      <div class="chart-hint" id="chartHint">Long-press chart to set entry / stop-loss</div>
+    </div>
+
+    <div class="calc-grid">
+      <div class="calc-item"><div class="l">Risk amount</div><div class="v mono" id="riskAmt">₹2,000</div></div>
+      <div class="calc-item"><div class="l">Risk / lot</div><div class="v mono" id="riskLot">₹0</div></div>
+      <div class="calc-item"><div class="l">Lots (auto)</div><div class="v mono" id="lotsOut">0</div></div>
+      <div class="calc-item"><div class="l">Quantity</div><div class="v mono" id="qtyOut">0</div></div>
+      <div class="calc-item wide"><span class="l">Total premium outlay</span><span class="v mono" id="outlayOut">₹0</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="execute-bar">
+  <div class="inner"><button id="execBtn" class="ce-mode">BUY 24850 CE · 0 QTY</button></div>
+</div>
+
+<div id="confirm">
+  <div class="box">
+    <h3>Confirm order (with stop-loss)</h3>
+    <div class="line"><span>Instrument</span><b id="cInst">NIFTY 24850 CE</b></div>
+    <div class="line"><span>Entry LIMIT / Stop-loss</span><b id="cPrice" class="mono">142.00 / 105.00</b></div>
+    <div class="line"><span>Lots × Lot size</span><b id="cLots" class="mono">1 × 65</b></div>
+    <div class="line"><span>Est. risk</span><b id="cRisk" class="mono">₹2,405</b></div>
+    <div class="actions">
+      <button class="cancel" id="cancelBtn">Cancel</button>
+      <button class="go" id="goBtn">Send to broker</button>
+    </div>
+  </div>
+</div>
+
+<div id="settings">
+  <div class="sheet">
+    <h3>Backend & broker</h3>
+    <p>This UI talks only to your own backend — never directly to Dhan. The backend needs a
+    whitelisted static IP for order placement; quotes and charts work without it.
+    These settings are saved on this phone and will still be here next time you open the app.</p>
+    <div class="saved-note" id="savedNote">✓ Saved</div>
+    <div class="field"><label>Backend base URL</label>
+      <input id="endpointUrl" placeholder="https://strike-backend-xxxx.onrender.com"></div>
+    <div class="field"><label>Lot size</label>
+      <input id="lotSize" class="mono" type="number" value="65"></div>
+    <div class="field"><label>Live poll interval (seconds)</label>
+      <input id="pollSec" class="mono" type="number" value="3"></div>
+    <button class="close" id="closeSettings">Save & close</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  const SETTINGS_KEY = 'strikeTerminalSettings';
+
+  function loadSettings(){
+    try{ return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; }catch(e){ return {}; }
+  }
+  function saveSettings(){
+    const data = {
+      endpointUrl: el('endpointUrl').value.trim(),
+      lotSize: el('lotSize').value,
+      pollSec: el('pollSec').value,
+      index: state.index,
+      optType: state.optType,
+      expiry: state.expiry
+    };
+    try{ localStorage.setItem(SETTINGS_KEY, JSON.stringify(data)); }catch(e){}
+  }
+
+  const state = {
+    index:'NIFTY', optType:'CE', spot:24850, lotSize:65, capital:100000, riskPct:2,
+    strike:24850, expiry:'', entry:142, sl:105,
+    pollTimer:null, connected:false, timeframe:'1', lastBarTime:null, linesVisible:false
+  };
+  const el = id => document.getElementById(id);
+  const fmt = n => '₹' + Math.round(n).toLocaleString('en-IN');
+  const strikeStep = () => state.index === 'SENSEX' ? 100 : 50;
+  const backendUrl = () => el('endpointUrl').value.trim().replace(/\/$/,'');
+
+  // ---- TradingView-style candlestick chart ----
+  const chartLibOk = typeof LightweightCharts !== 'undefined';
+  if(!chartLibOk){
+    el('chartContainer').innerHTML = '<div style="padding:20px; color:#7C8A9B; font-size:12px;">Chart library failed to load — check your internet connection and reopen the app. Strike selection and the calculator below still work.</div>';
+  }
+  const noopSeries = { setData(){}, update(){}, priceToCoordinate(){ return null; }, coordinateToPrice(){ return null; } };
+  const noopChart = { resize(){}, timeScale(){ return { fitContent(){}, subscribeVisibleLogicalRangeChange(){} }; } };
+
+  const chart = chartLibOk ? LightweightCharts.createChart(el('chartContainer'), {
+    layout: { background: { type:'solid', color:'transparent' }, textColor: '#7C8A9B', fontSize: 10 },
+    grid: { vertLines:{ color:'#1C2531' }, horzLines:{ color:'#1C2531' } },
+    rightPriceScale: { borderVisible:false },
+    timeScale: { borderVisible:false, timeVisible:true, secondsVisible:false },
+    crosshair: { mode: 0 },
+    handleScroll: true, handleScale: true
+  }) : noopChart;
+  const candleSeries = chartLibOk ? chart.addCandlestickSeries({
+    upColor:'#2DD4BF', downColor:'#FF6B6B', borderVisible:false,
+    wickUpColor:'#2DD4BF', wickDownColor:'#FF6B6B'
+  }) : noopSeries;
+  function resizeChart(){
+    if(!chartLibOk) return;
+    const wrap = el('chartWrap');
+    chart.resize(wrap.clientWidth, wrap.clientHeight);
+  }
+  resizeChart();
+
+  function buildLadder(){
+    const step = strikeStep();
+    const atm = Math.round(state.spot/step)*step;
+    const strikes = []; for(let i=-4;i<=4;i++) strikes.push(atm+i*step);
+    const wrap = el('ladder'); wrap.innerHTML='';
+    strikes.forEach(k=>{
+      const chip=document.createElement('div');
+      chip.className='strike-chip'+(k===atm?' atm':'')+(k===state.strike?' selected'+(state.optType==='PE'?' pe-mode':''):'');
+      const dist = state.optType==='CE' ? k-atm : atm-k;
+      let tag='ATM'; if(dist>0) tag=(dist/step)+' OTM'; if(dist<0) tag=(Math.abs(dist)/step)+' ITM';
+      chip.innerHTML=`<div class="k mono">${k}</div><div class="tag">${tag}</div>`;
+      chip.addEventListener('click', ()=>{ setStrike(k); });
+      wrap.appendChild(chip);
+    });
+  }
+
+  function setStrike(k){
+    state.strike = k;
+    el('strikeInput').value = k;
+    syncPremiumGuess();
+    render();
+    restartPolling();
+  }
+
+  function syncPremiumGuess(){
+    const dist = Math.abs(state.strike - state.spot);
+    const base = state.index==='SENSEX' ? 180 : 140;
+    const premium = Math.max(8, base - dist*0.55);
+    state.entry = Math.round(premium*100)/100;
+    state.sl = Math.round(premium*0.72*100)/100;
+  }
+
+  function clamp(v,a,b){ return Math.min(b, Math.max(a, v)); }
+
+  // Marks the last 2 one-minute candles of every 5-minute block (e.g.
+  // 9:43 & 9:44, 10:38 & 10:39) so your usual entry window stands out at a
+  // glance — only meaningful on the 1-minute chart.
+  const ENTRY_WINDOW_COLOR = '#F0B429';
+  function applyEntryWindowColor(bar){
+    if(state.timeframe !== '1') return bar;
+    const istMs = bar.time * 1000 + 5.5 * 60 * 60 * 1000;
+    const minute = new Date(istMs).getUTCMinutes();
+    const isEntryWindow = (minute % 5 === 3) || (minute % 5 === 4);
+    if(!isEntryWindow) return bar;
+    return { ...bar, color: ENTRY_WINDOW_COLOR, borderColor: ENTRY_WINDOW_COLOR, wickColor: ENTRY_WINDOW_COLOR };
+  }
+
+  function renderChartHandles(){
+    const linesOn = state.linesVisible;
+    el('chartHint').classList.toggle('hidden-hint', linesOn);
+    if(!linesOn){
+      el('entryHandle').classList.remove('visible');
+      el('slHandle').classList.remove('visible');
+      return;
+    }
+    const wrapHeight = el('chartWrap').clientHeight;
+    const entryY = candleSeries.priceToCoordinate(state.entry);
+    const slY = candleSeries.priceToCoordinate(state.sl);
+
+    // A price that's scrolled/zoomed outside the visible range returns
+    // null (or a coordinate outside the chart's pixel bounds) — hide just
+    // that one line instead of leaving it stuck at its last position.
+    const entryInView = entryY !== null && entryY >= 0 && entryY <= wrapHeight;
+    const slInView = slY !== null && slY >= 0 && slY <= wrapHeight;
+
+    el('entryHandle').classList.toggle('visible', entryInView);
+    el('slHandle').classList.toggle('visible', slInView);
+    if(entryInView) el('entryHandle').style.top = entryY + 'px';
+    if(slInView) el('slHandle').style.top = slY + 'px';
+    el('entryVal').textContent = state.entry.toFixed(2);
+    el('slVal').textContent = state.sl.toFixed(2);
+  }
+
+  function setupLongPress(){
+    const wrap = el('chartWrap');
+    let timer = null, startX = 0, startY = 0;
+    function cancel(){ if(timer){ clearTimeout(timer); timer = null; } }
+    function start(e){
+      const touch = e.touches ? e.touches[0] : e;
+      startX = touch.clientX; startY = touch.clientY;
+      timer = setTimeout(()=>{
+        const turningOn = !state.linesVisible;
+        state.linesVisible = turningOn;
+        if(turningOn){
+          // Place entry/SL right where you long-pressed instead of wherever
+          // they were last set — drag from there to fine-tune.
+          const rect = wrap.getBoundingClientRect();
+          const y = clamp(startY - rect.top, 0, rect.height);
+          const price = candleSeries.coordinateToPrice(y);
+          if(price !== null && price > 0){
+            state.entry = Math.round(price*20)/20;
+            // Place the default SL a fixed distance in PIXELS below the
+            // press point (not a % of price) — that way it always lands
+            // inside the visible chart, however tight you've zoomed in.
+            const slPixelOffset = Math.min(50, rect.height * 0.25);
+            const slY = clamp(y + slPixelOffset, 0, rect.height);
+            const slPrice = candleSeries.coordinateToPrice(slY);
+            state.sl = (slPrice !== null && slPrice > 0 && slPrice < state.entry)
+              ? Math.round(slPrice*20)/20
+              : Math.round(price*0.85*20)/20; // fallback if conversion fails
+            renderCalc();
+          }
+        }
+        renderChartHandles();
+        if (navigator.vibrate) navigator.vibrate(15);
+      }, 480);
+    }
+    function move(e){
+      const touch = e.touches ? e.touches[0] : e;
+      if(Math.abs(touch.clientX-startX) > 8 || Math.abs(touch.clientY-startY) > 8) cancel();
+    }
+    wrap.addEventListener('touchstart', start, {passive:true});
+    wrap.addEventListener('touchmove', move, {passive:true});
+    wrap.addEventListener('touchend', cancel);
+    wrap.addEventListener('touchcancel', cancel);
+    wrap.addEventListener('mousedown', start);
+    wrap.addEventListener('mousemove', move);
+    wrap.addEventListener('mouseup', cancel);
+  }
+
+  function makeDraggable(handleEl, key){
+    let dragging=false;
+    const wrap = el('chartWrap');
+    function start(e){ if(!state.linesVisible) return; dragging=true; e.preventDefault(); e.stopPropagation(); }
+    function move(e){
+      if(!dragging) return;
+      const touch = e.touches ? e.touches[0] : e;
+      const rect = wrap.getBoundingClientRect();
+      const y = clamp(touch.clientY-rect.top, 0, rect.height);
+      const price = candleSeries.coordinateToPrice(y);
+      if(price !== null) state[key] = Math.round(price*20)/20;
+      renderChartHandles(); renderCalc();
+    }
+    function end(){ dragging=false; }
+    handleEl.addEventListener('mousedown', start);
+    handleEl.addEventListener('touchstart', start, {passive:false});
+    window.addEventListener('mousemove', move);
+    window.addEventListener('touchmove', move, {passive:false});
+    window.addEventListener('mouseup', end);
+    window.addEventListener('touchend', end);
+  }
+
+  function renderCalc(){
+    const riskAmount = state.capital * (state.riskPct/100);
+    const perUnitRisk = Math.abs(state.entry - state.sl);
+    const riskPerLot = perUnitRisk * state.lotSize;
+    const lots = riskPerLot>0 ? Math.floor(riskAmount/riskPerLot) : 0;
+    const qty = lots * state.lotSize;
+    const outlay = qty * state.entry;
+
+    el('riskAmt').textContent = fmt(riskAmount);
+    el('riskLot').textContent = fmt(riskPerLot);
+    el('lotsOut').textContent = lots;
+    el('qtyOut').textContent = qty;
+    el('outlayOut').textContent = fmt(outlay);
+    el('selLabel').textContent = state.strike + ' ' + state.optType;
+
+    const btn = el('execBtn');
+    btn.textContent = 'BUY ' + state.strike + ' ' + state.optType + ' · ' + qty + ' QTY';
+    btn.className = state.optType==='CE' ? 'ce-mode' : 'pe-mode';
+    btn.disabled = lots < 1;
+    btn.style.opacity = lots<1 ? 0.5 : 1;
+    state._computed = {riskAmount, riskPerLot, lots, qty, outlay};
+  }
+
+  function render(){ buildLadder(); renderChartHandles(); renderCalc(); }
+
+  function restartPolling(){
+    if(state.pollTimer) clearInterval(state.pollTimer);
+    setConnected(false);
+    state.lastBarTime = null;
+    state.currentBar = null;
+    candleSeries.setData([]);
+    const base = backendUrl();
+    if(!base || !state.expiry) return;
+    const poll = async () => {
+      try{
+        const url = `${base}/api/live?index=${state.index}&expiry=${state.expiry}&strike=${state.strike}&type=${state.optType}&interval=${state.timeframe}`;
+        const r = await fetch(url);
+        const data = await r.json();
+
+        // Seed the chart with real OHLC candle history the first time we
+        // connect (or after a timeframe/strike change).
+        if(state.lastBarTime === null && data.candles && Array.isArray(data.candles.close) && data.candles.timestamp){
+          const c = data.candles;
+          const bars = c.timestamp.map((t,i)=>({
+            time: t, open:c.open[i], high:c.high[i], low:c.low[i], close:c.close[i]
+          })).filter(b => [b.open,b.high,b.low,b.close].every(v => typeof v === 'number'));
+          if(bars.length){
+            candleSeries.setData(bars.map(applyEntryWindowColor));
+            state.lastBarTime = bars[bars.length-1].time;
+            state.currentBar = { ...bars[bars.length-1] };
+            chart.timeScale().fitContent();
+          }
+        }
+
+        const ltp = data && data.ohlc && data.ohlc.data && data.ohlc.data[Object.keys(data.ohlc.data)[0]]
+          ? Object.values(data.ohlc.data[Object.keys(data.ohlc.data)[0]])[0].last_price : null;
+        if(ltp){
+          // Bucket "now" into the current timeframe's interval — if we've
+          // crossed into a new interval since the last tick, start a fresh
+          // candle; otherwise extend the existing one's high/low/close so
+          // it visibly grows with price movement instead of staying flat.
+          const intervalSec = Math.max(1, parseInt(state.timeframe)||1) * 60;
+          const nowBucket = Math.floor(Date.now()/1000 / intervalSec) * intervalSec;
+          if(!state.currentBar || nowBucket > state.currentBar.time){
+            state.currentBar = { time: nowBucket, open: ltp, high: ltp, low: ltp, close: ltp };
+          } else {
+            state.currentBar.high = Math.max(state.currentBar.high, ltp);
+            state.currentBar.low = Math.min(state.currentBar.low, ltp);
+            state.currentBar.close = ltp;
+          }
+          state.lastBarTime = state.currentBar.time;
+          candleSeries.update(applyEntryWindowColor(state.currentBar));
+          renderChartHandles();
+          setConnected(true);
+        } else {
+          setConnected(false);
+        }
+      }catch(err){ setConnected(false); }
+    };
+    poll();
+    state.pollTimer = setInterval(poll, Math.max(2, parseInt(el('pollSec').value)||3) * 1000);
+  }
+  function setConnected(on){
+    state.connected = on;
+    el('liveDot').className = 'dot' + (on ? ' on' : '');
+    el('liveText').textContent = on ? 'live' : (backendUrl() && state.expiry ? 'reconnecting…' : 'not connected');
+  }
+
+  async function loadExpiries(preferSaved){
+    const base = backendUrl();
+    const sel = el('expiry');
+    if(!base){ sel.innerHTML = '<option value="">Set backend URL in ⚙</option>'; return; }
+    try{
+      const r = await fetch(`${base}/api/expiries?index=${state.index}`);
+      const data = await r.json();
+      const list = data.data || [];
+      sel.innerHTML = list.map(d => `<option value="${d}">${d}</option>`).join('') || '<option value="">No expiries found</option>';
+      if(preferSaved && list.includes(preferSaved)){
+        sel.value = preferSaved;
+      }
+      state.expiry = sel.value;
+      restartPolling();
+    }catch(err){
+      sel.innerHTML = '<option value="">Could not reach backend</option>';
+    }
+  }
+
+  async function loadFunds(){
+    const base = backendUrl();
+    if(!base) return;
+    try{
+      const r = await fetch(`${base}/api/funds`);
+      const data = await r.json();
+      if(r.ok && typeof data.availableBalance === 'number'){
+        el('capital').value = Math.round(data.availableBalance);
+        el('capitalSrc').textContent = '· live from Dhan';
+        renderCalc();
+      } else {
+        el('capitalSrc').textContent = '';
+      }
+    }catch(err){
+      el('capitalSrc').textContent = '';
+    }
+  }
+
+  async function loadSpot(){
+    const base = backendUrl();
+    if(!base) return;
+    try{
+      const r = await fetch(`${base}/api/spot?index=${state.index}`);
+      const data = await r.json();
+      if(r.ok && typeof data.spot === 'number' && data.spot > 0){
+        state.spot = data.spot;
+        el('spot').value = data.spot;
+        el('spotSrc').textContent = '· live from Dhan';
+        setStrike(Math.round(state.spot/strikeStep())*strikeStep());
+      } else {
+        el('spotSrc').textContent = '';
+      }
+    }catch(err){
+      el('spotSrc').textContent = '';
+    }
+  }
+
+  el('btnNifty').addEventListener('click', ()=>{
+    state.index='NIFTY'; state.lotSize=65; el('lotSize').value=65;
+    el('btnNifty').classList.add('active'); el('btnSensex').classList.remove('active');
+    setStrike(Math.round(state.spot/strikeStep())*strikeStep());
+    saveSettings(); loadExpiries(); loadFunds(); loadSpot();
+  });
+  el('btnSensex').addEventListener('click', ()=>{
+    state.index='SENSEX'; state.lotSize=20; el('lotSize').value=20;
+    el('btnSensex').classList.add('active'); el('btnNifty').classList.remove('active');
+    setStrike(Math.round(state.spot/strikeStep())*strikeStep());
+    saveSettings(); loadExpiries(); loadFunds(); loadSpot();
+  });
+  el('btnCE').addEventListener('click', ()=>{
+    state.optType='CE'; el('btnCE').classList.add('active'); el('btnPE').classList.remove('active');
+    syncPremiumGuess(); render(); restartPolling(); saveSettings();
+  });
+  el('btnPE').addEventListener('click', ()=>{
+    state.optType='PE'; el('btnPE').classList.add('active'); el('btnCE').classList.remove('active');
+    syncPremiumGuess(); render(); restartPolling(); saveSettings();
+  });
+
+  el('strikeInput').addEventListener('change', e=>{
+    const step = strikeStep();
+    const v = Math.round((parseFloat(e.target.value)||state.strike)/step)*step;
+    setStrike(v);
+  });
+  el('stepUp').addEventListener('click', ()=> setStrike(state.strike + strikeStep()));
+  el('stepDown').addEventListener('click', ()=> setStrike(state.strike - strikeStep()));
+
+  ['spot','capital','riskPct'].forEach(id=>{
+    el(id).addEventListener('input', e=>{
+      state[id] = parseFloat(e.target.value)||0;
+      if(id==='spot'){ setStrike(Math.round(state.spot/strikeStep())*strikeStep()); el('spotSrc').textContent = '· manually edited'; }
+      if(id==='capital'){ el('capitalSrc').textContent = '· manually edited'; }
+      render();
+    });
+  });
+  el('lotSize').addEventListener('input', e=>{ state.lotSize = parseFloat(e.target.value)||0; renderCalc(); saveSettings(); });
+  el('expiry').addEventListener('change', e=>{ state.expiry = e.target.value; restartPolling(); saveSettings(); });
+  el('pollSec').addEventListener('change', ()=>{ restartPolling(); saveSettings(); });
+
+  setupLongPress();
+  // Pinch-zoom on the price axis doesn't always fire the same event as
+  // panning/scrolling, so keep the lines in sync with a light periodic
+  // check too — cheap since it only runs while the lines are shown.
+  setInterval(()=>{ if(state.linesVisible) renderChartHandles(); }, 250);
+  makeDraggable(el('entryHandle'), 'entry');
+  makeDraggable(el('slHandle'), 'sl');
+
+  el('tfToggle').querySelectorAll('button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      state.timeframe = btn.dataset.tf;
+      el('tfToggle').querySelectorAll('button').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      el('entryWindowLegend').style.display = state.timeframe === '1' ? 'flex' : 'none';
+      restartPolling();
+    });
+  });
+  window.addEventListener('resize', ()=>{ resizeChart(); renderChartHandles(); });
+  chart.timeScale().subscribeVisibleLogicalRangeChange(()=> renderChartHandles());
+
+  el('gearBtn').addEventListener('click', ()=> el('settings').style.display='flex');
+  el('closeSettings').addEventListener('click', ()=>{
+    saveSettings();
+    const note = el('savedNote'); note.style.display='block';
+    setTimeout(()=>{ note.style.display='none'; el('settings').style.display='none'; }, 500);
+    loadExpiries(state.expiry); loadFunds(); loadSpot();
+  });
+
+  el('execBtn').addEventListener('click', ()=>{
+    if(el('execBtn').disabled) return;
+    const c = state._computed;
+    el('cInst').textContent = state.index+' '+state.strike+' '+state.optType;
+    el('cPrice').textContent = state.entry.toFixed(2)+' / '+state.sl.toFixed(2);
+    el('cLots').textContent = c.lots+' × '+state.lotSize;
+    el('cRisk').textContent = fmt(c.riskAmount);
+    el('confirm').style.display='flex';
+  });
+  el('cancelBtn').addEventListener('click', ()=> el('confirm').style.display='none');
+
+  el('goBtn').addEventListener('click', async ()=>{
+    el('confirm').style.display='none';
+    const base = backendUrl();
+    if(!base || !state.expiry){ showToast('Set backend URL and expiry in ⚙ first.'); return; }
+    const payload = {
+      index: state.index, expiry: state.expiry, strike: state.strike, type: state.optType,
+      transactionType:'BUY', quantity: state._computed.qty,
+      price: state.entry, stopLossPrice: state.sl
+    };
+    showToast('Sending entry + stop-loss to your backend…');
+    try{
+      const res = await fetch(`${base}/api/order`, {
+        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      showToast(res.ok ? `Order sent with SL — ${data.orderId||''} ${data.orderStatus||''}` : `Broker error: ${data.errorMessage||data.remarks||data.error||('HTTP '+res.status)}`);
+    }catch(err){ showToast('Could not reach backend endpoint.'); }
+  });
+
+  function showToast(msg){
+    const t = el('toast'); t.textContent = msg; t.style.display='block';
+    clearTimeout(t._h); t._h = setTimeout(()=>{ t.style.display='none'; }, 3200);
+  }
+
+  // ---- restore saved settings on load ----
+  const saved = loadSettings();
+  if(saved.endpointUrl) el('endpointUrl').value = saved.endpointUrl;
+  if(saved.lotSize) el('lotSize').value = saved.lotSize;
+  if(saved.pollSec) el('pollSec').value = saved.pollSec;
+  if(saved.index === 'SENSEX'){
+    state.index='SENSEX'; state.lotSize= saved.lotSize || 20;
+    el('btnSensex').classList.add('active'); el('btnNifty').classList.remove('active');
+    state.spot = 82000; el('spot').value = 82000;
+  }
+  if(saved.optType === 'PE'){
+    state.optType='PE'; el('btnPE').classList.add('active'); el('btnCE').classList.remove('active');
+  }
+
+  syncPremiumGuess();
+  state.strike = Math.round(state.spot/strikeStep())*strikeStep();
+  el('strikeInput').value = state.strike;
+  render();
+  if(el('endpointUrl').value.trim()){ loadExpiries(saved.expiry); loadFunds(); loadSpot(); }
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
+  }
+})();
+</script>
+</body>
+</html>
